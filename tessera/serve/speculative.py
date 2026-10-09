@@ -120,13 +120,19 @@ def speculative_generate(
         elif accepted == n_draft:
             new_tokens.append(_sample(p_bonus))  # all accepted -> free bonus token
 
+        # A round can commit several tokens at once; stop at the first EOS like
+        # autoregressive decoding would, instead of keeping whatever follows it.
+        hit_eos = eos_id is not None and eos_id in new_tokens
+        if hit_eos:
+            new_tokens = new_tokens[: new_tokens.index(eos_id) + 1]
+
         out.extend(new_tokens)
         # Leave the last committed token unprocessed so it's re-fed (and overwrites any
         # speculative KV) next round.
         t_proc = len(out) - 1
         d_proc = len(out) - 1
 
-        if eos_id is not None and eos_id in new_tokens:
+        if hit_eos:
             break
 
     out = out[: len(prompt_tokens) + max_new_tokens]

@@ -46,3 +46,22 @@ def test_speculative_output_length_exact():
             model, model, [4, 4], max_new_tokens=10, n_draft=n_draft, temperature=0.0
         )
         assert len(res.tokens) == 2 + 10
+
+
+def test_speculative_stops_at_first_eos():
+    """When EOS lands mid-round, the accepted tokens after it must be dropped so the
+    output matches autoregressive generation with the same eos_id."""
+    model = _model()
+    prompt = [1, 5, 9, 3]
+    # Pick the greedy first token as EOS so it is the first accepted proposal of round 1.
+    eos_id = int(model.generate(torch.tensor([prompt]), max_new_tokens=1, temperature=0.0)[0, -1])
+    ref = model.generate(
+        torch.tensor([prompt]), max_new_tokens=16, temperature=0.0, eos_id=eos_id
+    )[0].tolist()
+
+    res = speculative_generate(
+        model, model, prompt, max_new_tokens=16, n_draft=4, temperature=0.0, eos_id=eos_id
+    )
+    assert res.tokens == ref
+    assert res.tokens[len(prompt):].count(eos_id) == 1
+    assert res.tokens[-1] == eos_id
