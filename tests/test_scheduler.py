@@ -1,5 +1,7 @@
 """Continuous-batching admission, memory budgeting, and preemption."""
 
+import pytest
+
 from tessera.serve.api import Request, SamplingParams
 from tessera.serve.paged_kv import BlockAllocator
 from tessera.serve.scheduler import Scheduler, Status
@@ -57,3 +59,13 @@ def test_preemption_under_memory_pressure():
     other = b if survivor is a else a
     assert other.status == Status.WAITING
     assert other in sched.waiting
+
+
+def test_rejects_request_larger_than_pool():
+    # 1 block of 4 slots can never hold 4 prompt tokens + 1 new token.
+    sched = Scheduler(BlockAllocator(1), block_size=4, max_running=8)
+    with pytest.raises(ValueError, match="KV blocks"):
+        sched.add(_req("too-large", 4, max_new=1))
+    assert not sched.waiting
+    sched.add(_req("small", 2, max_new=2))  # still accepts requests that fit
+    assert [s.request.request_id for s in sched.schedule()] == ["small"]

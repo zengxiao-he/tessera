@@ -64,6 +64,15 @@ class Scheduler:
         self.running: list[Sequence] = []
 
     def add(self, request: Request) -> Sequence:
+        # A request whose worst case (prompt + every new token) exceeds the whole pool can
+        # never finish: queued it blocks the head of the line forever, admitted it ends up
+        # preempting itself every step. Reject it up front instead.
+        need = self.blocks_needed(len(request.prompt_tokens) + request.params.max_new_tokens)
+        if need > self.allocator.num_blocks:
+            raise ValueError(
+                f"request {request.request_id!r} needs up to {need} KV blocks "
+                f"but the pool only has {self.allocator.num_blocks}"
+            )
         seq = Sequence(request=request, tokens=list(request.prompt_tokens))
         self.waiting.append(seq)
         return seq
