@@ -1,5 +1,6 @@
 """End-to-end engine: matches greedy generation and serves many requests under memory."""
 
+import pytest
 import torch
 
 from tessera.config import get_preset
@@ -50,3 +51,10 @@ def test_engine_completes_under_tight_memory():
     results = engine.run(reqs)
     assert len(results) == 5
     assert all(len(results[f"r{i}"].output_tokens) == 8 for i in range(5))
+
+
+def test_engine_rejects_oversized_request_instead_of_hanging():
+    engine = InferenceEngine(_model(), max_batch=1, block_size=4, num_blocks=1)
+    with pytest.raises(ValueError, match="KV blocks"):
+        engine.add_request(Request("too-large", [1, 2, 3, 4]))
+    assert not engine.has_unfinished()
